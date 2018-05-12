@@ -1,0 +1,3 @@
+MainWindowWidth = "800"
+
+MainWindowHeight = "600"

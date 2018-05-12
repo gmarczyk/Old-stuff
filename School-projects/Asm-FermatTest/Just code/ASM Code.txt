@@ -1,0 +1,775 @@
+.686
+.model flat, stdcall
+.mmx
+
+; Author:   Grzegorz Marczyk
+; Project:  Own implementation of Fermat's test for numbers in interval <2, 2^16 -1> in assembly language
+
+.data
+
+     numA                DW ?                ; Which number is the latest "a" value
+
+     mmxCounter          DW ?                ; Which iteration is performed in loops LoopBit1 and LoopBit0
+
+     iterAmount          DW ?                ; Amount of iterations for parallel calculations
+     iterCounter         DW ?                ; Which iteration is performed in loop PARALLEL at the moment
+
+     numP                DW ?                ; The number to be tested for primality
+     numN                DW ?                ; The p-1 (in formula a^(p-1) mod p)
+
+     bitsN               DW ?                ; Amount of significant bits in numN
+     bitsCounter         DW ?                ; Which iteration is performed in loop FORBITS at the moment
+
+     maskN               DW ?                ; Mask to check if the bit is 0 or 1 on different positions
+
+     resModular          DW 16 dup(?)        ; Results for modular exponentiation algorithm	(if 1 statement)
+     xModular            DW 16 dup(?)        ; x variable for modular exponentiation algorithm (if 0 statement)
+
+     globRes             DW 1b               ; Final result of the test
+
+     tmpMMX              DW 16 dup(?)        ; Temporary storage of 16bit values that are going to be set to MMX registers (x3x2x1x0=MM0, x7x6x5x4= MM1, MM0=MM4, MM1=MM5 etc.)
+     
+
+.code
+
+FermatASM proc myVal: WORD
+
+; ===================== Setting startup values       ===================== ;
+
+          MOV       ax,            myVal                         ; Number to be tested
+          MOV       numP,          ax                            ; numP = myVal
+          XOR       eax,           eax
+          MOV       ax,            numP                          ; numN = numP - 1
+          SUB       ax,            1
+          MOV       numN,          ax
+          MOV       numA,          1                             ; numA = 1, first reference value on which the tests are performed (1 to p-1>
+          MOV       ax,            1
+          MOV       globRes,       ax                            ; Set globRes = 1;
+
+; ===================== Calculating variable "bitsN" ===================== ;
+
+          MOV       cx,            0100000000000000b             ; Checking how many significant bits the numP has, maximum 15 bits
+          MOV       si,            15                            ; Amount of significant bits
+
+          MOV       ax,            numN                          ; 15-th bit (from 1 to 15, not from 0)
+          AND       ax,            cx                            ; AND numP and mask in cx
+          JNZ       SETBITS                                      ; If not zero, this is the highest "1" 
+          DEC       si                                           ; 15-th bit was 0, so this bit is not significant
+          SHR       cx,            1                             ; Shift mask right one bit
+
+          MOV       ax,            numN                          ; 14-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 13-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 12-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 11-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 10-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 9-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 8-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 7-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 6-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 5-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 4-th bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 3-rd bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 2-nd bit ...
+          AND       ax,            cx
+          JNZ       SETBITS
+          DEC       si
+          SHR       cx,            1
+
+          MOV       ax,            numN                          ; 1-st bit
+          AND       ax,            cx
+          JNZ       SETBITS
+          MOV       globRes,       0
+          JMP       FINISH    
+
+SETBITS:  MOV       bitsN,         si
+
+
+; ===================== Calculating amout of parallel iterations "iterAmount" ===================== ;
+
+          XOR       eax,           eax                         ; Clear EAX to fill it with numN
+          XOR       edx,           edx                         ; Clear EDX, preparing to DIV
+          XOR       ecx,           ecx                         ; Clear ECX for the same reason
+
+          MOV       ax,            numN
+          MOV       cx,            16                          ; Move divisor to CX
+          DIV       ecx                                        ; Perform modulo operation, result in EAX, remainder in EDX
+
+          MOV       iterAmount,    ax                          ; Amount of iterations = numN/16 global, must stay the same value
+          MOV       iterCounter,   ax		                  ; Set the iterator on initial value for first loop
+
+
+PARALLEL: CMP       iterCounter,      0                        ; for (iterCounter = iterAmount; i>0; i--)
+          JLE       SINGLE   
+
+          DEC       iterCounter
+          MOV       maskN,            0000000000000001b        ; Initialize starting values for loop FORBITS
+          MOV       ax,               bitsN                         
+          MOV       bitsCounter,      ax		             ; Set the counter of FORBITS loop to bitsN
+          JMP       INITMOD
+          
+FORBITS:  CMP       bitsCounter,      0                        ; for (bitsCounter = bitsN; i>0; i--)
+          JLE       SETGLOBRES
+          
+          MOV       ax,               numN                     ; AND the numN (p-1) on the proper bit (maskN) and check if the bit is 0 or 1
+          AND       ax,               maskN
+          JZ        BITZERO    
+
+              
+BITONE:   ;lea edx, byte ptr resModular stores addres of the table in EDX
+          MOV       ESI,              0
+          MOV       mmxCounter,       4
+
+
+LoopBit1: CMP       mmxCounter,       0                        ; for (mmxCounter = 4; i>0; i--)
+          JLE       RESETMMX
+
+          XOR       eax,              eax                      ; Clear EAX
+          MOV       ax,               resmodular[SI]           ; Put first value's result to AX
+          MOVD      ecx,              MM0                      ; ECX stores xn,xn-1 to perform (result= result * xn-1) using only CX
+          MUL       cx                                         ; Perform just mentioned formula
+          SHL       edx,              16                       ; DX:AX stores result, shift DX left so it is on high bits
+          ADD       eax,              edx                      ; Add DX high bits to EAX in order to form 32bit result
+
+          XOR       edx,              edx                      ; Clear EDX, preparing to perform modulo operation
+          XOR       ecx,              ecx                      ; Clear ECX for the same reason
+          MOV       cx,               numP                     ; Move divisor to CX
+          DIV       ecx                                        ; Perform modulo operation, result in EAX, remainder in EDX
+         
+          MOV       resmodular[SI],   dx                       ; Remainder of modulo on 32bit/16bit will always be max 16bit
+          PSRLQ     MM0,              16                       ; Shift right MM0 to have x2,x1 now (previously x1,x0)
+
+
+
+          XOR       eax,              eax                      ; The same thing for MM1
+          MOV       ax,               resmodular[SI+4*2]      
+          MOVD      ecx,              MM1                     
+          MUL       cx                                        
+          SHL       edx,              16                      
+          ADD       eax,              edx                      
+
+          XOR       edx,              edx                     
+          XOR       ecx,              ecx                      
+          MOV       cx,               numP                     
+          DIV       ecx                                       
+         
+          MOV       resmodular[SI+4*2],dx
+          PSRLQ     MM1,              16
+
+
+
+          XOR       eax,              eax                      ; The same thing for MM2
+          MOV       ax,               resmodular[SI+8*2]      
+          MOVD      ecx,              MM2                     
+          MUL       cx                                        
+          SHL       edx,              16                      
+          ADD       eax,              edx                      
+
+          XOR       edx,              edx                     
+          XOR       ecx,              ecx                      
+          MOV       cx,               numP                     
+          DIV       ecx                                       
+         
+          MOV       resmodular[SI+8*2],dx
+          PSRLQ     MM2,              16
+
+
+
+          XOR       eax,              eax                      ; The same thing for MM3
+          MOV       ax,               resmodular[SI+12*2]      
+          MOVD      ecx,              MM3                    
+          MUL       cx                                        
+          SHL       edx,              16                      
+          ADD       eax,              edx                      
+
+          XOR       edx,              edx                     
+          XOR       ecx,              ecx                      
+          MOV       cx,               numP                     
+          DIV       ecx                                       
+         
+          MOV       resmodular[SI+12*2],dx
+          PSRLQ     MM3,              16
+
+
+          ADD       si,               2                ; Loop again, now for x1,x5,x9,x13 (previously x0,x4,x8,x12)
+          DEC       mmxCounter
+          JMP       LoopBit1
+
+RESETMMX: 
+          MOVQ      mm0,              mm4
+          MOVQ      mm1,              mm5
+          MOVQ      mm2,              mm6   
+          MOVQ      mm3,              mm7
+         
+BITZERO:  ;lea edx, byte ptr tmpMMX     stores address of table in edx
+          MOV       tmpMMX[0],        0
+          MOV       tmpMMX[1],        0
+          MOV       tmpMMX[2],        0
+          MOV       tmpMMX[3],        0
+          MOV       tmpMMX[4],        0
+          MOV       tmpMMX[5],        0
+          MOV       tmpMMX[6],        0
+          MOV       tmpMMX[7],        0
+          MOV       tmpMMX[8],        0
+          MOV       tmpMMX[9],        0
+          MOV       tmpMMX[10],       0
+          MOV       tmpMMX[11],       0
+          MOV       tmpMMX[12],       0
+          MOV       tmpMMX[13],       0
+          MOV       tmpMMX[14],       0
+          MOV       tmpMMX[15],       0
+          XOR       esi,              esi
+          MOV       mmxCounter,       4
+
+          PMULLW    mm0,              mm0                      ; Square MM0 and get lower bits
+          PMULHW    mm4,              mm4                      ; Higher bits there
+
+          PMULLW    mm1,              mm1                      
+          PMULHW    mm5,              mm5     
+                           
+          PMULLW    mm2,              mm2                      
+          PMULHW    mm6,              mm6        
+                      
+          PMULLW    mm3,              mm3                
+          PMULHW    mm7,              mm7                
+
+LoopBit0: CMP       mmxCounter,       0                        ; for (mmxCounter = 4; i>0; i--)
+          JLE       NEXTBIT
+
+          MOVD      eax,              mm4                      ; Move higher bits to eax
+          SHL       eax,              16                       ; Put those bits on 31..15 eax position
+          MOVD      ecx,              mm0                      ; Move lower bits to ecx
+          ADD       ax,               cx                       ; Add those bits to eax to form 32bit value
+
+          XOR       edx,              edx                      ; Clear EDX, preparing to perform modulo operation
+          XOR       ecx,              ecx                      ; Clear ECX for the same reason
+          MOV       cx,               numP                     ; Move divisor to CX
+          DIV       ecx                                        ; Perform modulo operation, result in EAX, remainder in EDX
+          MOV       tmpMMX[SI],       dx
+                        
+          PSRLQ     MM4,              16                       ; Shift MMX'es to have current 16-bit value on the lowest bits of MMX
+          PSRLQ     MM0,              16
+
+
+
+          MOVD      eax,              mm5                      ; Do the same thing with MM5 and MM1
+          SHL       eax,              16
+          MOVD      ecx,              mm1
+          ADD       ax,               cx
+
+          XOR       edx,              edx                      
+          XOR       ecx,              ecx                      
+          MOV       cx,               numP                     
+          DIV       ecx                                        
+          MOV       tmpMMX[SI+4*2],   dx
+                        
+          PSRLQ     MM5,              16
+          PSRLQ     MM1,              16
+
+
+
+          MOVD      eax,              mm6                      ; Do the same thing with MM6 and MM2
+          SHL       eax,              16
+          MOVD      ecx,              mm2
+          ADD       ax,               cx
+
+          XOR       edx,              edx                      
+          XOR       ecx,              ecx                      
+          MOV       cx,               numP                     
+          DIV       ecx                                        
+          MOV       tmpMMX[SI+8*2],   dx
+                        
+          PSRLQ     MM6,              16
+          PSRLQ     MM2,              16
+
+
+
+          MOVD      eax,              mm7                      ; Do the same thing with MM7 and MM3
+          SHL       eax,              16
+          MOVD      ecx,              mm3
+          ADD       ax,               cx
+
+          XOR       edx,              edx                      
+          XOR       ecx,              ecx                      
+          MOV       cx,               numP                     
+          DIV       ecx                                        
+          MOV       tmpMMX[SI+12*2],   dx
+                        
+          PSRLQ     MM7,              16
+          PSRLQ     MM3,              16
+
+
+          ADD       si,               2
+          DEC       mmxCounter
+          JMP       LoopBit0
+
+          
+
+
+NEXTBIT:  MOV       esi,              6                         ; Fill MMX with results starting from the [3] to [0] - MM0
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm0,              eax
+          PSLLQ     mm0,              32
+          
+          SUB       SI,               2                         ; [1] and [0] here
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm1,              eax
+          PADDD     mm0,              mm1
+
+
+          MOV       esi,              14                        ; [7] to [4] for MM1
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm1,              eax
+          PSLLQ     mm1,              32
+          
+          SUB       SI,               2                         ; [5] and [4] here
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm2,              eax
+          PADDD     mm1,              mm2
+
+
+          MOV       esi,              22                        ; [11] to [8] for MM2
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm2,              eax
+          PSLLQ     mm2,              32
+          
+          SUB       SI,               2                         ; [9] and [8] here
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm3,              eax
+          PADDD     mm2,              mm3
+
+
+          MOV       esi,              30                        ; [15] to [12] for MM3
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm3,              eax
+          PSLLQ     mm3,              32
+          
+          SUB       SI,               2                         ; [13] and [12] here
+          MOV       ax,               tmpMMX[SI]
+          SHL       eax,              16
+          SUB       SI,               2
+          MOV       ax,               tmpMMX[SI]  
+          MOVD      mm4,              eax
+          PADDD     mm3,              mm4
+
+
+          MOVQ      mm4,              mm0
+          MOVQ      mm5,              mm1
+          MOVQ      mm6,              mm2   
+          MOVQ      mm7,              mm3
+
+          SHL       maskN,            1                         ; Set mask on next bit
+          DEC       bitsCounter
+          JMP       FORBITS
+
+
+SINGLE:
+          MOV       ax,               numA
+          CMP       ax,               numP
+          JGE       FINISH
+
+          MOV       maskN,            0000000000000001b        ; Initialize starting values for loop FORBITS
+          MOV       ax,               bitsN                         
+          MOV       bitsCounter,      ax		             ; Set the counter of FORBITS loop to bitsN
+
+          MOV       [resModular],     1    
+
+          XOR       ecx,              ecx                      ; Prepare for modulo operations               
+          MOV       cx,               numP   
+          XOR       eax,              eax                      ; xModular for this numA, x = numA mod numP
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular],       dx         
+          INC       numA
+
+SFORBITS: 
+          CMP       bitsCounter,      0                        ; for (bitsCounter = bitsN; i>0; i--)
+          JLE       SSETGLOBRES
+
+
+
+          MOV       ax,               numN                     ; AND the numN (p-1) on the proper bit (maskN) and check if the bit is 0 or 1
+          AND       ax,               maskN
+          JZ        SBITZERO    
+
+SBITONE:
+          XOR       eax,              eax                      ; Clear EAX
+          XOR       ecx,              ecx
+          MOV       ax,               resModular[0]            ; Put result to ax
+          MOV       cx,               xModular[0]              ; res = res * x   mod p
+          MUL       cx                                         
+          SHL       edx,              16                       ; DX:AX stores result, shift DX left so it is on high bits
+          ADD       eax,              edx                      ; Add DX high bits to EAX in order to form 32bit result
+
+          XOR       edx,              edx                      ; Clear EDX, preparing to perform modulo operation
+          XOR       ecx,              ecx                      ; Clear ECX for the same reason
+          MOV       cx,               numP                     ; Move divisor to CX
+          DIV       ecx                                        ; Perform modulo operation, result in EAX, remainder in EDX
+         
+          MOV       resModular[0],    dx
+          
+
+SBITZERO:
+          XOR       eax,              eax                      ; Clear EAX
+          XOR       ecx,              ecx
+          MOV       ax,               xModular[0]              ; Put x
+          MOV       cx,               xModular[0]              ; x = x*x   mod p
+          MUL       cx                                         
+          SHL       edx,              16                       ; DX:AX stores result, shift DX left so it is on high bits
+          ADD       eax,              edx                      ; Add DX high bits to EAX in order to form 32bit result
+
+          XOR       edx,              edx                      ; Clear EDX, preparing to perform modulo operation
+          XOR       ecx,              ecx                      ; Clear ECX for the same reason
+          MOV       cx,               numP                     ; Move divisor to CX
+          DIV       ecx                                        ; Perform modulo operation, result in EAX, remainder in EDX
+         
+          MOV       xModular[0],      dx
+
+          SHL       maskN,            1                        ; Set mask on next bit
+          DEC       bitsCounter
+          JMP       SFORBITS
+
+
+
+SETGLOBRES: 
+          MOV       ax,               1
+
+          CMP       ax,               [resModular]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+1*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+2*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+3*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+4*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+5*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+6*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+7*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+8*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+9*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+10*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+11*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+12*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+13*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+14*2]
+          JNE       SETFALSE
+          CMP       ax,               [resModular+15*2]
+          JNE       SETFALSE
+          JMP       PARALLEL
+
+
+SSETGLOBRES:
+          MOV       ax,               1
+          CMP       ax,               resModular[0]
+          JNE       SSETFALSE
+          JMP       SINGLE
+
+SETFALSE: MOV       globRes,          0
+          JMP       PARALLEL
+
+SSETFALSE:MOV       globRes,          0
+          JMP       SINGLE
+
+
+
+; ===================== Setting initial values for modular exponentiation for all 16 numbers ===================== ;
+
+INITMOD:  ;lea edx, byte ptr resModular   stores address of table in EDX, can be used when debugging
+          ;lea edx, byte ptr xModular
+
+          MOV       [resModular],       1                        ; Initialize resModular values for = 1
+          MOV       [resModular+1*2],   1                        ; 2 bytes further
+          MOV       [resModular+2*2],   1                        
+          MOV       [resModular+3*2],   1        
+          MOV       [resModular+4*2],   1        
+          MOV       [resModular+5*2],   1        
+          MOV       [resModular+6*2],   1        
+          MOV       [resModular+7*2],   1        
+          MOV       [resModular+8*2],   1        
+          MOV       [resModular+9*2],   1        
+          MOV       [resModular+10*2],  1        
+          MOV       [resModular+11*2],  1        
+          MOV       [resModular+12*2],  1        
+          MOV       [resModular+13*2],  1        
+          MOV       [resModular+14*2],  1        
+          MOV       [resModular+15*2],  1    
+
+          XOR       ecx,              ecx                        ; Prepare for modulo operations            
+          MOV       cx,               numP   
+
+          XOR       eax,              eax                        ; xModular X0
+          XOR       edx,              edx                        ; Clear EDX, preparing to perform modulo operation           
+          MOV       ax,               numA                       
+          DIV       ecx                                          ; Perform modulo operation, result in EAX, remainder in EDX
+          MOV       [xModular],       dx                         ; Initialize xModular values for = numA mod numP
+          INC       numA                                         ; next xModular is numA+1
+
+          XOR       eax,              eax                        ; xModular X1
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+1*2],   dx    
+          INC       numA       
+          
+          XOR       eax,              eax                        ; xModular X2
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+2*2],   dx         
+          INC       numA       
+
+          XOR       eax,              eax                        ; xModular X3
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+3*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X4
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+4*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X5
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+5*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X6
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+6*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X7
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+7*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X8
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+8*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X9
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+9*2],   dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X10
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+10*2],  dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X11
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+11*2],  dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X12
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+12*2],  dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X13
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+13*2],  dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X14
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+14*2],  dx     
+          INC       numA    
+
+          XOR       eax,              eax                        ; xModular X15
+          XOR       edx,              edx                            
+          MOV       ax,               numA
+          DIV       ecx                                         
+          MOV       [xModular+15*2],  dx     
+          INC       numA    
+
+
+          ; ========= Loading xModular values into MMX ========= ;
+          
+          MOV       ax,                 [xModular+3*2]               ; Load MM0 64..0 for X3..X0
+          SHL       eax,                16
+          MOV       ax,                 [xModular+2*2]
+          MOVD      MM0,                eax
+          PSLLQ     MM0,                32
+
+          MOV       ax,                 [xModular+1*2]
+          SHL       eax,                16
+          MOV       ax,                 [xModular]
+          MOVD      MM4,                eax                          ; Temporarily store it in MM4 lower 32 bits
+          PADDD     MM0,                MM4                          ; Add lower MM4 to higher MM0 to form 64bit value
+          MOVQ      MM4,                MM0                          ; Load the same thing into MMX4
+
+
+
+          MOV       ax,                 [xModular+7*2]               ; Load MM1 64..0 for X7..X4
+          SHL       eax,                16
+          MOV       ax,                 [xModular+6*2]
+          MOVD      MM1,                eax
+          PSLLQ     MM1,                32
+
+          MOV       ax,                 [xModular+5*2]
+          SHL       eax,                16
+          MOV       ax,                 [xModular+4*2]
+          MOVD      MM5,                eax
+          PADDD     MM1,                MM5  
+          MOVQ      MM5,                MM1                          ; Load the same thing into MMX5
+
+
+
+          MOV       ax,                 [xModular+11*2]              ; Load MM2 64..0 for X11..X8
+          SHL       eax,                16
+          MOV       ax,                 [xModular+10*2]
+          MOVD      MM2,                eax
+          PSLLQ     MM2,                32
+
+          MOV       ax,                 [xModular+9*2]
+          SHL       eax,                16
+          MOV       ax,                 [xModular+8*2]
+          MOVD      MM6,                eax
+          PADDD     MM2,                MM6
+          MOVQ      MM6,                MM2                          ; Load the same thing into MMX6
+
+
+
+          MOV       ax,                 [xModular+15*2]              ; Load MM3 64..0 for X15..X12
+          SHL       eax,                16
+          MOV       ax,                 [xModular+14*2]
+          MOVD      MM3,                eax
+          PSLLQ     MM3,                32
+
+          MOV       ax,                 [xModular+13*2]
+          SHL       eax,                16
+          MOV       ax,                 [xModular+12*2]
+          MOVD      MM7,                eax
+          PADDD     MM3,                MM7
+          
+          MOVQ      MM7,                MM3                          ; Load the same thing into MMX7
+
+          JMP       FORBITS
+
+
+
+FINISH:   XOR       eax,                eax
+          MOV       ax,                 globRes
+          ret
+FermatASM endp 
+ 
+end

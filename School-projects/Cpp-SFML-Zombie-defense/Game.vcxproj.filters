@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Settings">
+      <UniqueIdentifier>{435e0c1d-d936-4475-baae-6ebc1e58f04f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Images">
+      <UniqueIdentifier>{fff69e35-05e2-430d-91d4-5a8d49add320}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Modules">
+      <UniqueIdentifier>{85e20456-8fbd-42d4-8af0-8d6062ab34ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="General">
+      <UniqueIdentifier>{4a2399ad-9565-4e68-ae0f-cf4a4b1d9196}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Modules\TextureContainer">
+      <UniqueIdentifier>{1513be02-611b-470e-ad07-ee12df4d0de6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Characters">
+      <UniqueIdentifier>{20ab963e-39c5-4b8f-894b-03128065809f}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="AppConfig.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Settings.h">
+      <Filter>Settings</Filter>
+    </ClInclude>
+    <ClInclude Include="SettingsLoader.h">
+      <Filter>Settings</Filter>
+    </ClInclude>
+    <ClInclude Include="SettingsParameter.h">
+      <Filter>Settings</Filter>
+    </ClInclude>
+    <ClInclude Include="Images.h">
+      <Filter>Images</Filter>
+    </ClInclude>
+    <ClInclude Include="MainController.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="View.h">
+      <Filter>Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Backpack.h">
+      <Filter>General</Filter>
+    </ClInclude>
+    <ClInclude Include="Shop.h">
+      <Filter>Modules\TextureContainer</Filter>
+    </ClInclude>
+    <ClInclude Include="Gameplay.h">
+      <Filter>Modules\TextureContainer</Filter>
+    </ClInclude>
+    <ClInclude Include="Menu.h">
+      <Filter>Modules\TextureContainer</Filter>
+    </ClInclude>
+    <ClInclude Include="ITextureContainer.h">
+      <Filter>Modules\TextureContainer</Filter>
+    </ClInclude>
+    <ClInclude Include="MainCharacter.h">
+      <Filter>Characters</Filter>
+    </ClInclude>
+    <ClInclude Include="ToDrawElement.h">
+      <Filter>Images</Filter>
+    </ClInclude>
+    <ClInclude Include="Round.h">
+      <Filter>General</Filter>
+    </ClInclude>
+    <ClInclude Include="Opponent.h">
+      <Filter>Characters</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Game.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

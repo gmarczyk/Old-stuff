@@ -1,0 +1,42 @@
+/* 
+Author:  Grzegorz Marczyk
+Project: Fermat's primality test implementation for numbers in interval <2, 2^15 -1>
+*/
+
+int FermatCPP(unsigned short myVal)
+{
+     int result = 1;
+     int numP = myVal - 1;
+
+     int resModular;
+     int xModular;
+
+     int bitsAmount = -1;
+     for (int i = 14; i >= 0; i--)
+     {
+          if (((numP) & (1 << i)) != 0) {
+               bitsAmount = i + 1; // Counting from 0 (15th bit is 2^14, 16th is 2^15, 1st is 2^0
+               break;
+          }
+     }
+
+     for (int i = 1; i < myVal; i++)
+     {
+          resModular = 1;
+          xModular = i % myVal;
+
+          for (int j = 0; j < bitsAmount; j++)
+          {
+               if (((numP) & (1 << j)) != 0) { // if bit is 1
+                    resModular = (xModular * resModular) % myVal;
+               }
+
+               xModular = pow(xModular, 2);     // even if bit is 1 this must happen everytime
+               xModular = xModular % myVal;
+          }
+
+          if (resModular != 1) result = 0;
+     }
+
+     return result;
+}
